@@ -397,11 +397,16 @@ def score_song(user_prefs: Dict, song: Dict, mode: str = "BALANCED") -> Tuple[fl
     return (score, reasons)
 
 
+ARTIST_PENALTY: float = 0.80
+GENRE_PENALTY: float = 0.92
+
+
 def recommend_songs(
     user_prefs: Dict,
     songs: List[Dict],
     k: int = 5,
     mode: str = "BALANCED",
+    diversity: bool = False,
 ) -> List[Tuple[Dict, float, str]]:
     """
     Rank all songs by score against user preferences and return the top k.
@@ -416,17 +421,76 @@ def recommend_songs(
         Number of top recommendations to return. Defaults to 5.
     mode : str, optional
         Scoring mode key from SCORING_WEIGHTS. Defaults to "BALANCED".
+    diversity : bool, optional
+        When False (default), returns the top-k by raw score — existing
+        behaviour, all existing tests continue to pass unchanged.
+        When True, uses a greedy iterative selection loop that applies
+        ARTIST_PENALTY (0.80x) and GENRE_PENALTY (0.92x) to penalise
+        artists and genres already present in the selected list, promoting
+        variety in the final recommendations.
 
     Returns
     -------
     List of (song_dict, score_float, explanation_string) tuples,
     sorted descending by score, with ties broken by ascending song id.
+    When diversity=True, score_float reflects the effective (penalised)
+    score, not the raw base score.
     """
     scored = []
     for song in songs:
         score, reasons = score_song(user_prefs, song, mode)
-        explanation = ", ".join(reasons)
-        scored.append((song, score, explanation))
+        scored.append((song, score, reasons))
 
-    scored.sort(key=lambda x: (-x[1], x[0]["id"]))
-    return scored[:k]
+    if not diversity:
+        result = []
+        scored.sort(key=lambda x: (-x[1], x[0]["id"]))
+        for song, score, reasons in scored[:k]:
+            result.append((song, score, ", ".join(reasons)))
+        return result
+
+    # ------------------------------------------------------------------
+    # Greedy iterative selection with artist/genre diversity penalties.
+    # Time complexity: O(k * n) where n = len(songs), k = top-k count.
+    # In practice k <= 10 and n <= a few thousand, so this is acceptable.
+    # ------------------------------------------------------------------
+    selected = []
+    remaining = list(scored)
+
+    while len(selected) < k and remaining:
+        selected_artists = {s[0]["artist"] for s in selected}
+        selected_genres = {s[0]["genre"] for s in selected}
+
+        best = None
+        best_eff = -1.0
+        best_id = float("inf")
+
+        for song, base_score, reasons in remaining:
+            eff = base_score
+            penalty_reasons = []
+
+            if song["artist"] in selected_artists:
+                eff *= ARTIST_PENALTY
+                penalty_reasons.append(
+                    f"Diversity penalty (artist): {song['artist']} already recommended"
+                    " — score adjusted 0.80x"
+                )
+            if song["genre"] in selected_genres:
+                eff *= GENRE_PENALTY
+                penalty_reasons.append(
+                    f"Diversity penalty (genre): {song['genre']} already represented"
+                    " — score adjusted 0.92x"
+                )
+
+            eff = max(eff, 0.0)
+
+            if eff > best_eff or (eff == best_eff and song["id"] < best_id):
+                best = (song, eff, reasons + penalty_reasons)
+                best_eff = eff
+                best_id = song["id"]
+
+        selected.append(best)
+        remaining = [
+            (s, sc, r) for s, sc, r in remaining if s["id"] != best[0]["id"]
+        ]
+
+    return [(song, score, ", ".join(reasons)) for song, score, reasons in selected]

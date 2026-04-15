@@ -17,6 +17,12 @@ def main() -> None:
     # Available: BALANCED | GENRE_FIRST | MOOD_FIRST | ENERGY_FOCUSED | DISCOVERY
     SCORING_MODE = "BALANCED"
 
+    # Toggle diversity/fairness mode here — one line change.
+    # When True, a greedy selection loop applies ARTIST_PENALTY (0.80x) and
+    # GENRE_PENALTY (0.92x) to prevent a single artist or genre from
+    # dominating the top-k results.
+    DIVERSITY_MODE: bool = True
+
     songs = load_songs("data/songs.csv")
 
     profiles = {
@@ -92,11 +98,16 @@ def main() -> None:
         },
     }
 
+    if DIVERSITY_MODE:
+        print("[Diversity mode ON — artist/genre penalties active]")
+
     for profile_name, user_prefs in profiles.items():
         print(f"\n{'='*60}")
         print(f"Profile: {profile_name}  |  Mode: {SCORING_MODE}")
         print(f"{'='*60}")
-        recommendations = recommend_songs(user_prefs, songs, k=5, mode=SCORING_MODE)
+        recommendations = recommend_songs(
+            user_prefs, songs, k=5, mode=SCORING_MODE, diversity=DIVERSITY_MODE
+        )
         for rec in recommendations:
             song, score, explanation = rec
             print(f"  {song['title']} ({song['genre']}/{song['mood']}) — Score: {score:.3f}")
