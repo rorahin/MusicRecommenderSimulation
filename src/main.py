@@ -12,6 +12,62 @@ You will implement the functions in recommender.py:
 from src.recommender import load_songs, recommend_songs
 
 
+def print_recommendations(
+    profile_name: str,
+    recommendations: list,
+    mode: str,
+    diversity_mode: bool,
+) -> None:
+    """Print a formatted visual summary table for one user profile's recommendations."""
+    COL_RANK    = 4
+    COL_TITLE   = 25
+    COL_ARTIST  = 21
+    COL_GENRE   = 20
+    COL_SCORE   = 7
+    TABLE_WIDTH = 81
+
+    print("=" * TABLE_WIDTH)
+    print(f"Profile : {profile_name}")
+    diversity_label = "ON" if diversity_mode else "OFF"
+    print(f"Mode    : {mode}  |  Diversity: {diversity_label}")
+    print("=" * TABLE_WIDTH)
+    print()
+
+    print(
+        " #  ".ljust(COL_RANK)
+        + "Title".ljust(COL_TITLE)
+        + "Artist".ljust(COL_ARTIST)
+        + "Genre/Mood".ljust(COL_GENRE)
+        + "Score".rjust(COL_SCORE)
+    )
+    print("-" * TABLE_WIDTH)
+
+    for rank, (song, score, explanation) in enumerate(recommendations, start=1):
+        if len(song["title"]) > 24:
+            title_cell = (song["title"][:23] + "…").ljust(COL_TITLE)
+        else:
+            title_cell = song["title"].ljust(COL_TITLE)
+
+        if len(song["artist"]) > 20:
+            artist_cell = (song["artist"][:19] + "…").ljust(COL_ARTIST)
+        else:
+            artist_cell = song["artist"].ljust(COL_ARTIST)
+
+        gm_raw = f"{song['genre']} / {song['mood']}"
+        if len(gm_raw) > 19:
+            gm_raw = gm_raw[:19] + "…"
+        gm_cell = gm_raw.ljust(COL_GENRE)
+
+        score_cell = f"{score:.3f}".rjust(COL_SCORE)
+
+        print(str(rank).rjust(3) + " " + title_cell + artist_cell + gm_cell + score_cell)
+
+        if isinstance(explanation, list):
+            explanation = "; ".join(explanation)
+        print(f"     Why: {explanation}")
+        print()
+
+
 def main() -> None:
     # Switch scoring mode here — one line change.
     # Available: BALANCED | GENRE_FIRST | MOOD_FIRST | ENERGY_FOCUSED | DISCOVERY
@@ -102,17 +158,10 @@ def main() -> None:
         print("[Diversity mode ON — artist/genre penalties active]")
 
     for profile_name, user_prefs in profiles.items():
-        print(f"\n{'='*60}")
-        print(f"Profile: {profile_name}  |  Mode: {SCORING_MODE}")
-        print(f"{'='*60}")
         recommendations = recommend_songs(
             user_prefs, songs, k=5, mode=SCORING_MODE, diversity=DIVERSITY_MODE
         )
-        for rec in recommendations:
-            song, score, explanation = rec
-            print(f"  {song['title']} ({song['genre']}/{song['mood']}) — Score: {score:.3f}")
-            print(f"  Because: {explanation}")
-            print()
+        print_recommendations(profile_name, recommendations, SCORING_MODE, DIVERSITY_MODE)
 
 
 if __name__ == "__main__":
