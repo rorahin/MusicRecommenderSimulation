@@ -17,17 +17,48 @@ Replace this paragraph with your own summary of what your version does.
 
 ## How The System Works
 
-Explain your design in plain language.
+Real-world recommendation engines like Spotify and YouTube analyze millions of listening behaviors — plays, skips, replays, and saves — to continuously refine a model of what each listener enjoys. At scale, these systems blend collaborative filtering (finding patterns across users with similar taste) with content-based filtering (matching item attributes directly to a user's stated preferences). The result is a feedback loop that updates in real time.
 
-Some prompts to answer:
+This simulator focuses on the content-based side of that equation. It takes a snapshot of a user's musical preferences — preferred genre, mood, energy level, and acoustic texture — and scores every song in the catalog against that profile using a transparent weighted formula. Each recommendation comes with an explanation of exactly which attributes matched, making the system's reasoning visible rather than opaque.
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+### Song and UserProfile Features
 
-You can include a simple diagram or bullet list if helpful.
+- **genre** — the primary musical category (e.g., pop, hip-hop, classical); a genre mismatch heavily penalizes a song's score
+- **mood** — the emotional tone (e.g., focused, relaxed, intense); differentiates a study track from a workout track even within the same genre
+- **energy** — a 0–1 intensity scale; scored by closeness to the user's target, not binary match
+- **acousticness** — a 0–1 texture scale measuring organic vs. electronic sound; inverted for users who prefer digital production
+
+### Algorithm Recipe
+
+1. Load songs from `data/songs.csv`.
+2. Accept a `UserProfile` specifying: `favorite_genre`, `favorite_mood`, `target_energy` (float 0–1), `likes_acoustic` (bool).
+3. For each song, compute four sub-scores:
+   - **genre_score**: 1.0 if genre matches, 0.0 otherwise
+   - **mood_score**: 1.0 if mood matches, 0.0 otherwise
+   - **energy_score**: `1.0 - abs(song.energy - user.target_energy)`
+   - **acousticness_score**: `song.acousticness` if `likes_acoustic=True`, else `1.0 - song.acousticness`
+4. Combine into a final weighted score:
+
+   `final_score = (0.40 × genre_score) + (0.30 × mood_score) + (0.20 × energy_score) + (0.10 × acousticness_score)`
+
+5. Sort all songs descending by `final_score`. Ties broken by ascending song id.
+6. Return the top K songs, each with an explanation string naming which sub-scores fired.
+
+### Pipeline
+
+```mermaid
+flowchart TD
+    A([User Profile\ngenre · mood · target_energy · likes_acoustic]) --> B[Load songs.csv]
+    B --> C[For each song in catalog]
+    C --> D[Compute genre_score]
+    C --> E[Compute mood_score]
+    C --> F[Compute energy_score]
+    C --> G[Compute acousticness_score]
+    D & E & F & G --> H[Weighted sum → final_score]
+    H --> C
+    C --> I[Sort descending by final_score\ntie-break: ascending id]
+    I --> J([Return Top K recommendations\nwith explanation strings])
+```
 
 ---
 
@@ -78,13 +109,12 @@ Use this section to document the experiments you ran. For example:
 
 ## Limitations and Risks
 
-Summarize some limitations of your recommender.
-
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
+- **Genre overfitting**: genre carries 40% of the total score. Songs outside the user's preferred genre rarely surface in top results, regardless of how well other features match.
+- **Filter bubble**: the scoring formula rewards similarity to stated preferences with no mechanism to surface unfamiliar genres or moods. The system never surprises the user.
+- **Binary categorical matching**: genre and mood use exact string comparison — no partial credit. A "hip-hop" user receives zero genre points for an "r&b" song even if those genres are adjacent.
+- **Cold start**: a user with no stated genre or mood preference loses 70% of available scoring weight (0.40 + 0.30) immediately, degrading recommendations to energy and acousticness only.
+- **Catalog size**: the system operates on 20 songs. Results are not generalizable to real-world scale, and any genre not present in the catalog can never score a genre match.
+- **No temporal adaptation**: the user profile is static per run. The system cannot learn from behavior, adjust to context (time of day, activity), or update preferences over time.
 
 You will go deeper on this in your model card.
 
