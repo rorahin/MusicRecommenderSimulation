@@ -32,14 +32,21 @@ This simulator focuses on the content-based side of that equation. It takes a sn
 
 1. Load songs from `data/songs.csv`.
 2. Accept a `UserProfile` specifying: `favorite_genre`, `favorite_mood`, `target_energy` (float 0–1), `likes_acoustic` (bool).
-3. For each song, compute four sub-scores:
+3. For each song, compute nine sub-scores:
    - **genre_score**: 1.0 if genre matches, 0.0 otherwise
    - **mood_score**: 1.0 if mood matches, 0.0 otherwise
    - **energy_score**: `1.0 - abs(song.energy - user.target_energy)`
    - **acousticness_score**: `song.acousticness` if `likes_acoustic=True`, else `1.0 - song.acousticness`
-4. Combine into a final weighted score:
+   - **tempo_score**: `1.0 - abs(normalized_bpm - user.target_tempo)` (BPM normalized to [0, 1])
+   - **danceability_score**: `1.0 - abs(song.danceability - user.target_danceability)`
+   - **popularity_score**: `song.popularity / 100.0` (inverted if user prefers niche tracks)
+   - **instrumentalness_score**: `song.instrumentalness` if `wants_instrumental=True`, else `1.0 - song.instrumentalness`
+   - **speechiness_score**: `1.0 - abs(song.speechiness - user.target_speechiness)`
+4. Combine into a final weighted score using the default **BALANCED** mode:
 
-   `final_score = (0.40 × genre_score) + (0.30 × mood_score) + (0.20 × energy_score) + (0.10 × acousticness_score)`
+   `final_score = (0.35 × genre_score) + (0.25 × mood_score) + (0.15 × energy_score) + (0.08 × acousticness_score) + (0.07 × tempo_score) + (0.04 × danceability_score) + (0.02 × popularity_score) + (0.02 × instrumentalness_score) + (0.02 × speechiness_score)`
+
+   Five named scoring modes are available: **BALANCED** (default), **GENRE_FIRST**, **MOOD_FIRST**, **ENERGY_FOCUSED**, and **DISCOVERY**. The active mode is set with one variable in `src/main.py`. Each mode redistributes weight across the same nine features.
 
 5. Sort all songs descending by `final_score`. Ties broken by ascending song id.
 6. Return the top K songs, each with an explanation string naming which sub-scores fired.
@@ -48,16 +55,21 @@ This simulator focuses on the content-based side of that equation. It takes a sn
 
 ```mermaid
 flowchart TD
-    A([User Profile\ngenre · mood · target_energy · likes_acoustic]) --> B[Load songs.csv]
+    A([User Profile\ngenre · mood · target_energy · likes_acoustic\ntarget_tempo · target_danceability · wants_popular\nwants_instrumental · target_speechiness]) --> B[Load songs.csv]
     B --> C[For each song in catalog]
     C --> D[Compute genre_score]
     C --> E[Compute mood_score]
     C --> F[Compute energy_score]
     C --> G[Compute acousticness_score]
-    D & E & F & G --> H[Weighted sum → final_score]
-    H --> C
-    C --> I[Sort descending by final_score\ntie-break: ascending id]
-    I --> J([Return Top K recommendations\nwith explanation strings])
+    C --> H[Compute tempo_score]
+    C --> I[Compute danceability_score]
+    C --> J[Compute popularity_score]
+    C --> K[Compute instrumentalness_score]
+    C --> L[Compute speechiness_score]
+    D & E & F & G & H & I & J & K & L --> M[Weighted sum → final_score\nmode: BALANCED / GENRE_FIRST / MOOD_FIRST\nENERGY_FOCUSED / DISCOVERY]
+    M --> C
+    C --> N[Sort descending by final_score\ntie-break: ascending id]
+    N --> O([Return Top K recommendations\nwith explanation strings])
 ```
 
 ---
@@ -109,10 +121,10 @@ Use this section to document the experiments you ran. For example:
 
 ## Limitations and Risks
 
-- **Genre overfitting**: genre carries 40% of the total score. Songs outside the user's preferred genre rarely surface in top results, regardless of how well other features match.
-- **Filter bubble**: the scoring formula rewards similarity to stated preferences with no mechanism to surface unfamiliar genres or moods. The system never surprises the user.
+- **Genre overfitting**: genre carries 35% of the total score in BALANCED mode (up to 55% in GENRE_FIRST mode). Songs outside the user's preferred genre rarely surface in top results, regardless of how well other features match.
+- **Filter bubble**: the scoring formula rewards similarity to stated preferences with no mechanism to surface unfamiliar genres or moods. The DISCOVERY mode partially mitigates this by boosting danceability and popularity weight at the expense of genre and mood.
 - **Binary categorical matching**: genre and mood use exact string comparison — no partial credit. A "hip-hop" user receives zero genre points for an "r&b" song even if those genres are adjacent.
-- **Cold start**: a user with no stated genre or mood preference loses 70% of available scoring weight (0.40 + 0.30) immediately, degrading recommendations to energy and acousticness only.
+- **Cold start**: a user with no stated genre or mood preference loses 60% of available scoring weight (0.35 + 0.25) immediately in BALANCED mode, degrading recommendations to energy and lower-weighted features only.
 - **Catalog size**: the system operates on 20 songs. Results are not generalizable to real-world scale, and any genre not present in the catalog can never score a genre match.
 - **No temporal adaptation**: the user profile is static per run. The system cannot learn from behavior, adjust to context (time of day, activity), or update preferences over time.
 
